@@ -261,12 +261,7 @@ static void on_read(void* user_data, grpc_error_handle error) {
 
     if (!error.ok()) {
       grpc_slice_buffer_reset_and_unref(ep->read_buffer);
-      call_read_cb(
-          ep, GRPC_ERROR_CREATE_REFERENCING("Secure read failed", &error, 1));
-      return;
-    }
-
-    if (ep->zero_copy_protector != nullptr) {
+    } else if (ep->zero_copy_protector != nullptr) {
       // Use zero-copy grpc protector to unprotect.
       int min_progress_size = 1;
       // Get the size of the last frame which is not yet fully decrypted.
@@ -332,6 +327,12 @@ static void on_read(void* user_data, grpc_error_handle error) {
                     cur - GRPC_SLICE_START_PTR(ep->read_staging_buffer))));
       }
     }
+  }
+
+  if (!error.ok()) {
+    call_read_cb(
+        ep, GRPC_ERROR_CREATE_REFERENCING("Secure read failed", &error, 1));
+    return;
   }
 
   // TODO(yangg) experiment with moving this block after read_cb to see if it
@@ -492,11 +493,6 @@ static void endpoint_write(grpc_endpoint* secure_ep, grpc_slice_buffer* slices,
                       max_frame_size);
 }
 
-static void endpoint_shutdown(grpc_endpoint* secure_ep, grpc_error_handle why) {
-  secure_endpoint* ep = reinterpret_cast<secure_endpoint*>(secure_ep);
-  grpc_endpoint_shutdown(ep->wrapped_ep, why);
-}
-
 static void endpoint_destroy(grpc_endpoint* secure_ep) {
   secure_endpoint* ep = reinterpret_cast<secure_endpoint*>(secure_ep);
   ep->memory_owner.Reset();
@@ -546,7 +542,6 @@ static const grpc_endpoint_vtable vtable = {endpoint_read,
                                             endpoint_add_to_pollset,
                                             endpoint_add_to_pollset_set,
                                             endpoint_delete_from_pollset_set,
-                                            endpoint_shutdown,
                                             endpoint_destroy,
                                             endpoint_get_peer,
                                             endpoint_get_local_address,
